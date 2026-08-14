@@ -1,0 +1,48 @@
+C4Context
+title C4 Nivel 1 - Contexto del Sistema de Banca por Internet BP
+
+Person(cliente, "Cliente BP", "Consulta productos y movimientos, realiza pagos y transferencias, recibe notificaciones y completa el onboarding digital.")
+Person(soporte, "Agente de soporte", "Atiende solicitudes y consulta información autorizada del cliente.")
+Person(cumplimiento, "Analista de Cumplimiento y Auditoría", "Investiga alertas, consulta evidencia y prepara reportes regulatorios autorizados.")
+
+System(bp, "Banca por Internet BP", "Plataforma digital web/móvil que orquesta consultas, pagos, transferencias, onboarding, notificaciones y auditoría. MAMBO conserva el registro financiero; BP aplica seguridad, privacidad, continuidad y monitoreo.")
+
+System_Ext(mambo, "MAMBO - Core Banking", "Sistema externo y fuente oficial de clientes, productos, saldos y movimientos contabilizados.")
+System_Ext(cliente_detalle, "Sistema de Detalle de Cliente", "Complementa la información del cliente cuando se requiere mayor detalle.")
+System_Ext(ciam, "CIAM Corporativo BP", "Proveedor existente de identidad configurado con OAuth 2.0 y OpenID Connect, MFA y credenciales del cliente.")
+System_Ext(interbancario, "BCE / Red Interbancaria", "Procesa pagos y transferencias entre entidades según el contrato y protocolo vigente.")
+System_Ext(kyc, "Proveedor KYC Biométrico", "Valida documento, prueba de vida y comparación facial durante el onboarding.")
+System_Ext(aml, "Proveedor AML y Sanciones", "Evalúa listas, perfil de riesgo y señales para prevención de lavado de activos.")
+System_Ext(aws_notify, "Notification Service - AWS API Gateway", "Sistema externo principal para notificaciones SMS/email de movimientos y alertas.")
+System_Ext(push, "Proveedor Push Móvil", "Segundo sistema de notificación mediante APNS y FCM sin exponer información sensible.")
+System_Ext(autoridades, "UAFE, Superintendencia de Bancos y SPDP", "Autoridades relacionadas con AML, riesgo operativo/ciberseguridad, derechos financieros y protección de datos LOPDP.")
+
+Rel(cliente, bp, "Usa banca web/móvil, completa onboarding y recibe estados", "HTTPS")
+Rel(soporte, bp, "Consulta información autorizada y atiende casos", "HTTPS + MFA")
+Rel(cumplimiento, bp, "Investiga eventos y consulta evidencia inmutable", "HTTPS + MFA/PIM")
+
+Rel(bp, mambo, "Consulta datos y solicita contabilizar operaciones; conserva el ID oficial", "Canal privado + API/contrato MAMBO")
+Rel(bp, cliente_detalle, "Obtiene información detallada mediante una capa anticorrupción", "Canal privado + API/contrato TBD")
+Rel(bp, ciam, "Autentica, aplica step-up MFA y vincula identidades", "OIDC / OAuth 2.0 + PKCE")
+Rel(bp, interbancario, "Envía y reconcilia instrucciones interbancarias", "Canal B2B; ISO 20022 si el contrato lo exige")
+Rel(bp, kyc, "Crea sesiones efímeras y verifica liveness/identidad", "API/SDK cifrado")
+Rel(bp, aml, "Evalúa onboarding y operaciones según riesgo", "API cifrada")
+Rel(bp, aws_notify, "Envía SMS/email con datos minimizados", "HTTPS hacia AWS API Gateway")
+Rel(bp, push, "Envía notificaciones push sin datos financieros sensibles", "API cifrada")
+Rel(bp, autoridades, "Entrega reportes/evidencia aprobados y atiende obligaciones aplicables", "Canal regulatorio seguro")
+
+UpdateElementStyle(cliente, $bgColor="#374151", $fontColor="#FFFFFF", $borderColor="#111827")
+UpdateElementStyle(soporte, $bgColor="#374151", $fontColor="#FFFFFF", $borderColor="#111827")
+UpdateElementStyle(cumplimiento, $bgColor="#374151", $fontColor="#FFFFFF", $borderColor="#111827")
+UpdateElementStyle(bp, $bgColor="#0F766E", $fontColor="#FFFFFF", $borderColor="#134E4A")
+UpdateElementStyle(mambo, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(cliente_detalle, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(ciam, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(interbancario, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(kyc, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(aml, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(aws_notify, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(push, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(autoridades, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+
+UpdateLayoutConfig($c4ShapeInRow="5", $c4BoundaryInRow="2")

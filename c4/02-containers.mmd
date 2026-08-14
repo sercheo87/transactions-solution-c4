@@ -1,0 +1,158 @@
+C4Container
+title C4 Nivel 2 - Contenedores de la Banca por Internet BP
+
+Person(cliente, "Cliente BP", "Opera desde navegador o aplicación móvil.")
+Person(operador, "Soporte / Cumplimiento", "Accede a funciones administrativas segregadas y auditadas.")
+
+System_Boundary(bp, "Banca por Internet BP") {
+    Container_Boundary(canales, "Canales y acceso público") {
+        Container(spa, "SPA Banca Web", "React + TypeScript / origen estático privado", "React se elige por ecosistema/talento y composición modular; aplica CSP, accesibilidad, SCA y no expone tokens OAuth al JavaScript.")
+        Container(mobile, "Aplicación Móvil", "Flutter", "Flutter se elige por una base de código y UI consistente; valida SDK KYC nativo, secure storage, passkeys, attestation y accesibilidad.")
+        Container(frontdoor, "Edge Global", "Azure Front Door Premium + WAF", "Único ingreso público; WAF, TLS, health probes y failover automático entre dos regiones reducen exposición y latencia.")
+        Container(apim, "API Gateway", "Azure API Management multi-región", "Valida JWT/scopes, aplica cuotas/rate limit, versiona APIs y propaga correlación; orígenes privados evitan bypass.")
+        Container(web_bff, "Web BFF", "Azure Container Apps", "Mantiene sesión web server-side y entrega cookie Secure/HttpOnly/SameSite con control CSRF.")
+        Container(mobile_bff, "Mobile BFF", "Azure Container Apps", "Adapta APIs y respuestas a la aplicación móvil; no contiene reglas financieras.")
+    }
+
+    Container_Boundary(servicios, "Servicios por bounded context - Hexagonal sobre Container Apps multi-región/multi-zona") {
+        Container(customer, "Customer Profile", "Azure Container Apps", "Facade que agrega datos básicos y detalle mediante adaptadores ACL.")
+        Container(movements, "Movements Query", "Azure Container Apps", "Consulta movimientos oficiales y usa Cache-Aside/materialized view con frescura explícita.")
+        Container(transfers, "Payments & Transfers", "Azure Container Apps", "Valida idempotencia y estado; usa operación atómica del Core o Process Manager interbancario.")
+        Container(risk, "Transaction Risk", "Azure Container Apps", "Evalúa límites, fraude y necesidad de step-up MFA con decisión versionada.")
+        Container(onboarding, "Onboarding", "Azure Container Apps", "Orquesta consentimiento, KYC, AML, revisión y vinculación con CIAM.")
+        Container(notifications, "Notifications", "Azure Container Apps", "Consume eventos confirmados y selecciona canales mediante Strategy, retry y DLQ.")
+        Container(audit, "Audit", "Azure Container Apps", "Normaliza y sella eventos auditables; crea proyección consultable y archivo inmutable.")
+    }
+
+    Container_Boundary(plataforma, "Datos, integración y operación privados") {
+        ContainerDb(postgres, "Datos Operacionales", "PostgreSQL Flexible Server HA zone-redundant + réplica cross-region", "Bases/esquemas aislados por servicio, PITR y failover controlado; estado/idempotencia/Outbox, nunca ledger MAMBO.")
+        ContainerDb(redis, "Read Model Cache", "Azure Managed Redis con redundancia", "Caché descartable para clientes frecuentes; su pérdida no afecta integridad y se reconstruye desde MAMBO/eventos.")
+        ContainerQueue(servicebus, "Mensajería de Negocio", "Service Bus Premium zone-redundant + Geo-Replication", "Entrega al menos una vez, deduplicación, retry y DLQ; replica metadata/mensajes según RPO.")
+        ContainerQueue(eventhubs, "Flujo de Auditoría", "Event Hubs con Geo-Replication de datos", "Streams de ingreso/validado, offsets y consumidores independientes; no se usa Geo-DR solo-metadata cuando el RPO exige eventos.")
+        ContainerDb(audit_query, "Consulta de Auditoría", "Cosmos DB / Azure Data Explorer multi-región", "Proyección autorizada y reconstruible; elección final depende de volumen, consulta y costo.")
+        ContainerDb(worm, "Archivo de Evidencia", "Blob Storage / ADLS con WORM y réplica aprobada", "Archivo append-only, retención/legal hold y restore test conforme a residencia y política.")
+        Container(keyvault, "Secretos y Claves", "Azure Key Vault", "RBAC, purge protection, rotación, acceso privado y claves/certificados.")
+        Container(observability, "Observabilidad y SecOps", "Azure Monitor, Application Insights, Log Analytics, Sentinel y Defender", "Métricas, logs, trazas, alertas y respuesta; telemetría sin PII.")
+        Container(governance, "Gobierno, Cumplimiento y FinOps", "Azure Policy, Purview, Cost Management y Defender", "Guardrails LOPDP/SB/UAFE, clasificación/retención, presupuestos, tags, alertas de costo, rightsizing y evidencia de cumplimiento.")
+    }
+}
+
+System_Ext(ciam, "CIAM Corporativo BP", "OIDC/OAuth 2.0, MFA adaptativa y passkeys; Entra External ID es una opción si BP requiere seleccionar producto.")
+System_Ext(mambo, "MAMBO - Core Banking", "Sistema externo y fuente oficial de clientes, productos, saldos y movimientos contabilizados.")
+System_Ext(cliente_detalle, "Sistema de Detalle de Cliente", "Información complementaria del cliente.")
+System_Ext(interbancario, "BCE / Red Interbancaria", "Pagos y transferencias entre entidades; protocolo contractual TBD.")
+System_Ext(kyc, "Proveedor KYC Biométrico", "Documento, liveness y face match con sesión efímera.")
+System_Ext(aml, "Proveedor AML / Sanciones", "Listas, perfilamiento y señales de riesgo.")
+System_Ext(aws_notify, "Notification Service - AWS API Gateway", "Sistema externo principal de notificaciones SMS/email.")
+System_Ext(push, "Proveedor Push", "Azure Notification Hubs hacia APNS/FCM.")
+System_Ext(alt_notify, "Proveedor Alterno", "Segundo proveedor homologado cuando continuidad requiera independencia cloud.")
+
+Rel(cliente, frontdoor, "Accede al canal web", "HTTPS TLS 1.2+")
+Rel(frontdoor, spa, "Entrega assets estáticos desde origen privado", "HTTPS + Private Link")
+Rel(cliente, mobile, "Usa banca móvil y captura KYC", "Aplicación instalada")
+Rel(spa, frontdoor, "Invoca APIs con sesión BFF; no porta access token", "HTTPS/JSON + cookie segura")
+Rel(mobile, frontdoor, "Invoca APIs con access token restringido", "HTTPS/JSON + OAuth 2.0")
+Rel(operador, frontdoor, "Accede a funciones autorizadas", "HTTPS + MFA/PIM")
+Rel(frontdoor, apim, "Filtra y enruta tráfico API; bloquea acceso directo al origen", "HTTPS + Private Link")
+Rel(apim, web_bff, "Enruta APIs web con JWT/correlación validados", "HTTPS/JSON privado")
+Rel(apim, mobile_bff, "Enruta APIs móviles con JWT/correlación validados", "HTTPS/JSON privado")
+
+Rel(web_bff, ciam, "Ejecuta OIDC Authorization Code + PKCE y sesión confidencial", "OIDC/OAuth 2.0")
+Rel(mobile, ciam, "Autentica en navegador del sistema y registra passkey", "OIDC Authorization Code + PKCE S256")
+Rel(mobile_bff, ciam, "Solicita step-up y valida contexto de identidad", "OAuth 2.0/OIDC")
+
+Rel(web_bff, customer, "Consulta perfil autorizado", "HTTPS/JSON privado")
+Rel(web_bff, movements, "Consulta movimientos con paginación/frescura", "HTTPS/JSON privado")
+Rel(web_bff, transfers, "Envía orden idempotente y consulta estado", "HTTPS/JSON privado")
+Rel(mobile_bff, customer, "Consulta perfil autorizado", "HTTPS/JSON privado")
+Rel(mobile_bff, movements, "Consulta movimientos", "HTTPS/JSON privado")
+Rel(mobile_bff, transfers, "Envía orden idempotente y consulta estado", "HTTPS/JSON privado")
+Rel(mobile_bff, onboarding, "Inicia y continúa el onboarding", "HTTPS/JSON privado")
+
+Rel(customer, mambo, "Consulta datos básicos/productos mediante ACL y circuit breaker", "Canal privado + contrato MAMBO")
+Rel(customer, cliente_detalle, "Consulta detalle mediante ACL y circuit breaker", "Canal privado + contrato TBD")
+Rel(movements, mambo, "Obtiene movimientos oficiales en miss/refresh", "Canal privado + contrato MAMBO")
+Rel(movements, redis, "Lee/escribe vista Cache-Aside con TTL y timestamp", "RESP sobre TLS + endpoint privado")
+Rel(transfers, risk, "Solicita decisión de límites/fraude/step-up", "HTTPS/JSON privado")
+Rel(transfers, mambo, "Ejecuta operación propia o contabiliza y conserva ID oficial", "Canal privado + idempotencia MAMBO")
+Rel(transfers, interbancario, "Envía/consulta instrucción interbancaria y reconcilia", "Canal B2B; protocolo TBD")
+Rel(transfers, postgres, "Persiste estado, idempotencia y Outbox en una transacción local", "PostgreSQL/TLS + identidad privada")
+
+Rel(onboarding, kyc, "Crea sesión efímera y valida resultado biométrico", "API cifrada")
+Rel(onboarding, aml, "Evalúa listas y riesgo", "API cifrada")
+Rel(onboarding, mambo, "Valida/vincula cliente sin replicar el maestro", "Canal privado + contrato MAMBO")
+Rel(onboarding, ciam, "Crea/vincula identidad después de aprobación", "OIDC/API administrativa protegida")
+Rel(onboarding, postgres, "Persiste workflow, consentimiento y Outbox", "PostgreSQL/TLS")
+
+Rel(transfers, servicebus, "Publica eventos confirmados desde Outbox", "AMQP/TLS + Managed Identity")
+Rel(onboarding, servicebus, "Publica resultado de onboarding desde Outbox", "AMQP/TLS + Managed Identity")
+Rel(servicebus, movements, "Actualiza materialized view de movimientos", "Topic subscription + DLQ")
+Rel(servicebus, notifications, "Entrega eventos notificables confirmados", "Topic subscription + DLQ")
+Rel(servicebus, audit, "Entrega eventos de dominio para evidencia", "Topic subscription + deduplicación")
+
+Rel(notifications, aws_notify, "Envía SMS/email minimizado", "HTTPS hacia AWS API Gateway + credencial rotada")
+Rel(notifications, push, "Envía push sin datos financieros sensibles", "API TLS")
+Rel(notifications, alt_notify, "Conmuta a canal/proveedor alterno según política", "API TLS")
+
+Rel(apim, eventhubs, "Publica accesos y decisiones técnicas sanitizadas", "AMQP/HTTPS + Managed Identity")
+Rel(web_bff, eventhubs, "Publica acciones web auditables sin tokens/PII innecesaria", "AMQP/HTTPS + Managed Identity")
+Rel(mobile_bff, eventhubs, "Publica acciones móviles auditables", "AMQP/HTTPS + Managed Identity")
+Rel(audit, eventhubs, "Consume ingreso y publica evento validado/sellado", "Consumer group + idempotencia")
+Rel(eventhubs, worm, "Captura únicamente el stream validado", "Event Hubs Capture + WORM")
+Rel(audit, audit_query, "Mantiene proyección consultable y reconstruible", "API privada")
+
+Rel(web_bff, keyvault, "Obtiene secretos/certificados autorizados", "Managed Identity + Private Endpoint")
+Rel(transfers, keyvault, "Obtiene secretos/certificados B2B autorizados", "Managed Identity + Private Endpoint")
+Rel(onboarding, keyvault, "Obtiene credenciales KYC/CIAM autorizadas", "Managed Identity + Private Endpoint")
+Rel(audit, keyvault, "Obtiene material criptográfico autorizado", "Managed Identity + Private Endpoint")
+Rel(apim, observability, "Envía métricas, logs y trazas sanitizadas", "Diagnostic Settings / OpenTelemetry")
+Rel(transfers, observability, "Envía SLI, trazas y métricas de negocio", "OpenTelemetry")
+Rel(onboarding, observability, "Envía métricas de flujo y errores sin biometría", "OpenTelemetry")
+Rel(notifications, observability, "Envía lag, reintentos y entrega por canal", "OpenTelemetry")
+Rel(audit, observability, "Envía lag, rechazo de esquema y alertas de integridad", "OpenTelemetry")
+Rel(customer, observability, "Envía latencia, error/degradación y dependencia MAMBO", "OpenTelemetry")
+Rel(movements, observability, "Envía p95, hit ratio, frescura y fallos MAMBO", "OpenTelemetry")
+Rel(governance, apim, "Aplica políticas de seguridad, exposición y cumplimiento", "Azure Policy / Defender")
+Rel(governance, postgres, "Controla HA, backup, acceso privado, tags y costo", "Azure Policy / Cost Management")
+Rel(governance, worm, "Controla inmutabilidad, retención, residencia y legal hold", "Azure Policy / Purview")
+Rel(governance, observability, "Consume evidencia, postura, presupuesto y anomalías", "Policy Insights / Cost Management")
+
+UpdateElementStyle(cliente, $bgColor="#374151", $fontColor="#FFFFFF", $borderColor="#111827")
+UpdateElementStyle(operador, $bgColor="#374151", $fontColor="#FFFFFF", $borderColor="#111827")
+
+UpdateElementStyle(spa, $bgColor="#2563EB", $fontColor="#FFFFFF", $borderColor="#1E3A8A")
+UpdateElementStyle(mobile, $bgColor="#2563EB", $fontColor="#FFFFFF", $borderColor="#1E3A8A")
+UpdateElementStyle(frontdoor, $bgColor="#7C3AED", $fontColor="#FFFFFF", $borderColor="#4C1D95")
+UpdateElementStyle(apim, $bgColor="#7C3AED", $fontColor="#FFFFFF", $borderColor="#4C1D95")
+UpdateElementStyle(web_bff, $bgColor="#7C3AED", $fontColor="#FFFFFF", $borderColor="#4C1D95")
+UpdateElementStyle(mobile_bff, $bgColor="#7C3AED", $fontColor="#FFFFFF", $borderColor="#4C1D95")
+
+UpdateElementStyle(customer, $bgColor="#0F766E", $fontColor="#FFFFFF", $borderColor="#134E4A")
+UpdateElementStyle(movements, $bgColor="#0F766E", $fontColor="#FFFFFF", $borderColor="#134E4A")
+UpdateElementStyle(transfers, $bgColor="#0F766E", $fontColor="#FFFFFF", $borderColor="#134E4A")
+UpdateElementStyle(risk, $bgColor="#0F766E", $fontColor="#FFFFFF", $borderColor="#134E4A")
+UpdateElementStyle(onboarding, $bgColor="#0F766E", $fontColor="#FFFFFF", $borderColor="#134E4A")
+UpdateElementStyle(notifications, $bgColor="#0F766E", $fontColor="#FFFFFF", $borderColor="#134E4A")
+UpdateElementStyle(audit, $bgColor="#0F766E", $fontColor="#FFFFFF", $borderColor="#134E4A")
+
+UpdateElementStyle(postgres, $bgColor="#166534", $fontColor="#FFFFFF", $borderColor="#14532D")
+UpdateElementStyle(redis, $bgColor="#166534", $fontColor="#FFFFFF", $borderColor="#14532D")
+UpdateElementStyle(audit_query, $bgColor="#166534", $fontColor="#FFFFFF", $borderColor="#14532D")
+UpdateElementStyle(worm, $bgColor="#166534", $fontColor="#FFFFFF", $borderColor="#14532D")
+UpdateElementStyle(servicebus, $bgColor="#B45309", $fontColor="#FFFFFF", $borderColor="#78350F")
+UpdateElementStyle(eventhubs, $bgColor="#B45309", $fontColor="#FFFFFF", $borderColor="#78350F")
+UpdateElementStyle(keyvault, $bgColor="#475569", $fontColor="#FFFFFF", $borderColor="#1E293B")
+UpdateElementStyle(observability, $bgColor="#475569", $fontColor="#FFFFFF", $borderColor="#1E293B")
+UpdateElementStyle(governance, $bgColor="#475569", $fontColor="#FFFFFF", $borderColor="#1E293B")
+
+UpdateElementStyle(ciam, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(mambo, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(cliente_detalle, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(interbancario, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(kyc, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(aml, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(aws_notify, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(push, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+UpdateElementStyle(alt_notify, $bgColor="#B91C1C", $fontColor="#FFFFFF", $borderColor="#7F1D1D")
+
+UpdateLayoutConfig($c4ShapeInRow="4", $c4BoundaryInRow="3")
